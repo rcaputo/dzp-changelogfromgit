@@ -64,11 +64,36 @@ sub gather_files {
 				'tag'  => $tags[$i],
 			};
 		}
+
+		@tags = sort { $a->{'time'} cmp $b->{'time'} } @tags;
 	}
 
-	push @tags, {'time' => '9999-99-99 99:99:99 +0000', 'tag' => 'HEAD'};
+	{
+		# add a fake tag for the current release because it doesn't exist yet ( not released yet! )
+		my $newtag;
+		my $ver = $self->zilla->version;
+		if ( defined $tags[-1] ) {
+			# Figure out the previous tag and do some mangling on it to get the "next" one
+			# this requires the user to set a tag_regexp that has a capture!
+			my $prev = $tags[-1]->{'tag'};
+			my $tag_pattern = $self->tag_regexp();
+			if ( $prev =~ m/$tag_pattern/ ) {
+				if ( defined $1 ) {
+					$newtag = $prev;
+					$newtag =~ s/$1/$ver/;
+				} else {
+					$self->zilla->log_debug( "Unable to use 'tag_regexp' as it doesn't define a capture!" );
+				}
+			} else {
+				$self->zilla->log_debug( "Unable to use 'tag_regexp' as it didn't match the previous tag! ($prev)" );
+			}
+		} else {
+			# nothing we can do, generate a fake one...
+		}
 
-	@tags = sort { $a->{'time'} cmp $b->{'time'} } @tags;
+		$newtag = 'v' . $ver if ! defined $newtag;
+		push @tags, {'time' => strftime( "%F %T %z", gmtime($^T) ), 'tag' => $newtag, 'faked' => 1};
+	}
 
 	my $changelog = "";
 
@@ -79,7 +104,9 @@ sub gather_files {
 
 			my @commit;
 
-			open my $commit, "-|", "git log $tags[$i-1]{tag}..$tags[$i]{tag} ."
+			my $old_tag = exists $tags[$i-1]{faked} ? 'HEAD' : $tags[$i-1]{tag};
+			my $new_tag = exists $tags[$i]{faked} ? 'HEAD' : $tags[$i]{tag};
+			open my $commit, "-|", "git log $old_tag..$new_tag ."
 				or die $!;
 			local $/ = "\n\n";
 			while (<$commit>) {
@@ -189,6 +216,14 @@ on particular projects' tags.  For instance, POE::Test::Loops' release
 tags may be specified as:
 
 	tag_regexp = ^ptl-
+
+NOTE: Since the "usual" way of using git tags is to tag a release, that
+means this module can't find the "next" tag! If you supply a capturing
+regex that specifies where the version will be, it will be used to generate
+the "next" tag. If the regexp fails to match the tag will default to the
+version provided by Dist::Zilla.
+
+	tag_regexp = ^ptl-(.+)$
 
 =item * file_name
 
