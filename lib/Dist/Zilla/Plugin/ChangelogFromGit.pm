@@ -6,8 +6,18 @@ use Moose;
 use Moose::Autobox;
 with 'Dist::Zilla::Role::FileGatherer';
 
-use Text::Wrap qw(wrap fill $columns $huge);
+use DateTime;
+use DateTime::Infinite;
+use Software::Release;
+use Software::Release::Change;
+use Git::Repository::Log::Iterator;
 use POSIX qw(strftime);
+
+has formatter_class => (
+    is => 'ro',
+    isa => 'Str',
+    default => 'DefaultFormatter'
+);
 
 has max_age => (
 	is      => 'ro',
@@ -36,15 +46,11 @@ has wrap_column => (
 sub gather_files {
 	my ($self, $arg) = @_;
 
-	my $earliest_date = strftime(
-		"%FT %T +0000", gmtime(time() - $self->max_age() * 86400)
-	);
-
-	$Text::Wrap::huge    = "wrap";
-	$Text::Wrap::columns = $self->wrap_column();
+	my $earliest_date = DateTime->now->subtract(days => $self->max_age);
 
 	chomp(my @tags = `git tag`);
 
+    my @releases = ();
 	{
 		my $tag_pattern = $self->tag_regexp();
 
@@ -56,85 +62,59 @@ sub gather_files {
 			}
 
 			my $commit =
-				`git show $tags[$i] --pretty='tformat:(((((%ci)))))' | grep '(((((' | head -1`;
-			die $commit unless $commit =~ /\(\(\(\(\((.+?)\)\)\)\)\)/;
+				`git show $tags[$i] --pretty='tformat:(((((%ct)))))' | grep '(((((' | head -1`;
+			die $commit unless $commit =~ /\(\(\(\(\((\d+?)\)\)\)\)\)/;
 
-			$tags[$i] = {
-				'time' => $1,
-				'tag'  => $tags[$i],
-			};
+            push(@releases, Software::Release->new(
+                date => DateTime->from_epoch(epoch => $1),
+                version => $tags[$i]
+            ));
 		}
 	}
 
-	push @tags, {'time' => '9999-99-99 99:99:99 +0000', 'tag' => 'HEAD'};
+	push @releases, Software::Release->new(date => DateTime::Infinite::Future->new, version => 'HEAD');
 
-	@tags = sort { $a->{'time'} cmp $b->{'time'} } @tags;
-
-	my $changelog = "";
+    @releases =  sort { DateTime->compare($a->date, $b->date) } @releases;
 
 	{
-		my $i = @tags;
+		my $i = scalar(@releases);
 		while ($i--) {
-			last if $tags[$i]{time} lt $earliest_date;
+		    if(defined($releases[$i]->date)) {
+                last if DateTime->compare($releases[$i]->date, $earliest_date) == -1;
+            }
 
-			my @commit;
+            my $release = $releases[$i];
 
-			open my $commit, "-|", "git log $tags[$i-1]{tag}..$tags[$i]{tag} ."
-				or die $!;
-			local $/ = "\n\n";
-			while (<$commit>) {
-				if (/^\S/) {
-					s/^/  /mg;
-					push @commit, $_;
-					next;
-				}
-
-				# Trim off identical leading whitespace.
-				my ($whitespace) = /^(\s*)/;
-				if (length $whitespace) {
-					s/^$whitespace//mg;
-				}
-
-				# Re-flow the paragraph if it isn't indented from the norm.
-				# This should preserve indented quoted text, wiki-style.
-				unless (/^\s/) {
-					push @commit, fill("    ", "    ", $_), "\n\n";
-				}
-				else {
-					push @commit, $_;
-				}
-			}
-
-			# Don't display the tag if there's nothing under it.
-			next unless @commit;
-
-			my $tag_line = "$tags[$i]{time} $tags[$i]{tag}";
-			$changelog .= (
-				("=" x length($tag_line)) . "\n" .
-				"$tag_line\n" .
-				("=" x length($tag_line)) . "\n\n"
-			);
-
-			$changelog .= $_ foreach @commit;
+            my $iter = Git::Repository::Log::Iterator->new($releases[$i-1]->version.'..'.$release->version);
+            while(my $log = $iter->next) {
+                $release->add_to_changes(Software::Release::Change->new(
+                    author_email => $log->author_email,
+                    author_name => $log->author_name,
+                    change_id => $log->commit,
+                    committer_email => $log->committer_email,
+                    committer_name => $log->committer_name,
+                    date => DateTime->from_epoch(epoch => $log->committer_localtime),
+                    description => $log->message
+                ));
+            };
 		}
 	}
 
-	my $epilogue = "End of changes in the last " . $self->max_age() . " day";
-	$epilogue .= "s" unless $self->max_age() == 1;
+    my $formclass = $self->formatter_class;
+    if($formclass !~ /^\+/) {
+        $formclass = "Dist::Zilla::Plugin::ChangelogFromGit::$formclass";
+    }
+    Class::MOP::load_class($formclass);
+    my $formatter = $formclass->new();
 
-	$changelog .= (
-		("=" x length($epilogue)) . "\n" .
-		"$epilogue\n" .
-		("=" x length($epilogue)) . "\n"
-	);
+    my $changelog = $formatter->format(\@releases);
 
-	my $file = Dist::Zilla::File::InMemory->new({
-		content => $changelog,
-		name    => $self->file_name(),
-	});
+    my $file = Dist::Zilla::File::InMemory->new({
+      content => $changelog,
+      name    => $self->file_name(),
+    });
 
-	$self->add_file($file);
-	return;
+    $self->add_file($file);
 }
 
 __PACKAGE__->meta->make_immutable;
@@ -206,7 +186,20 @@ width.  If 74 is to short, one might specify:
 
 	wrap_column = 78
 
+=item * formatter_class
+
+The name of the formatter class to use.  Dist::Zilla::Plugin::ChangelogFromGit
+will be prepended to the class name unless it begins with a +.  This allows
+you to specific a formatter of your own creation. (See below.)
+
 =back
+
+=head1 Rolling Your Own Formatter
+
+This module ships with a default formatter object.  If you are interested in
+making your own you can write a module that consumes the
+L<Dist::Zilla::ChangelogFromGit::Formatter> role.  This role may be changed
+in the future!
 
 =head1 Subversion and CVS
 
