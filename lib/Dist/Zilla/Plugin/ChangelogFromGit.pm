@@ -11,8 +11,13 @@ use DateTime::Infinite;
 use Software::Release;
 use Software::Release::Change;
 use Git::Repository::Log::Iterator;
-use Text::Wrap qw(wrap fill $columns $huge);
 use POSIX qw(strftime);
+
+has formatter_class => (
+    is => 'ro',
+    isa => 'Str',
+    default => 'DefaultFormatter'
+);
 
 has max_age => (
 	is      => 'ro',
@@ -42,9 +47,6 @@ sub gather_files {
 	my ($self, $arg) = @_;
 
 	my $earliest_date = DateTime->now->subtract(days => $self->max_age);
-
-	$Text::Wrap::huge    = "wrap";
-	$Text::Wrap::columns = $self->wrap_column();
 
 	chomp(my @tags = `git tag`);
 
@@ -98,8 +100,12 @@ sub gather_files {
 		}
 	}
 
-    Class::MOP::load_class('Dist::Zilla::Plugin::ChangelogFromGit::Formatter');
-    my $formatter = Dist::Zilla::Plugin::ChangelogFromGit::Formatter->new;
+    my $formclass = $self->formatter_class;
+    if($formclass !~ /^\+/) {
+        $formclass = "Dist::Zilla::Plugin::ChangelogFromGit::$formclass";
+    }
+    Class::MOP::load_class($formclass);
+    my $formatter = $formclass->new();
 
     my $changelog = $formatter->format(\@releases);
 
@@ -180,7 +186,20 @@ width.  If 74 is to short, one might specify:
 
 	wrap_column = 78
 
+=item * formatter_class
+
+The name of the formatter class to use.  Dist::Zilla::Plugin::ChangelogFromGit
+will be prepended to the class name unless it begins with a +.  This allows
+you to specific a formatter of your own creation. (See below.)
+
 =back
+
+=head1 Rolling Your Own Formatter
+
+This module ships with a default formatter object.  If you are interested in
+making your own you can write a module that consumes the
+L<Dist::Zilla::ChangelogFromGit::Formatter> role.  This role may be changed
+in the future!
 
 =head1 Subversion and CVS
 
