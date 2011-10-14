@@ -6,6 +6,11 @@ use Moose;
 use Moose::Autobox;
 with 'Dist::Zilla::Role::FileGatherer';
 
+use DateTime;
+use DateTime::Infinite;
+use Software::Release;
+use Software::Release::Change;
+use Git::Repository::Log::Iterator;
 use Text::Wrap qw(wrap fill $columns $huge);
 use POSIX qw(strftime);
 
@@ -36,15 +41,14 @@ has wrap_column => (
 sub gather_files {
 	my ($self, $arg) = @_;
 
-	my $earliest_date = strftime(
-		"%FT %T +0000", gmtime(time() - $self->max_age() * 86400)
-	);
+	my $earliest_date = DateTime->now->subtract(days => $self->max_age);
 
 	$Text::Wrap::huge    = "wrap";
 	$Text::Wrap::columns = $self->wrap_column();
 
 	chomp(my @tags = `git tag`);
 
+    my @releases = ();
 	{
 		my $tag_pattern = $self->tag_regexp();
 
@@ -56,112 +60,57 @@ sub gather_files {
 			}
 
 			my $commit =
-				`git show $tags[$i] --pretty='tformat:(((((%ci)))))' | grep '(((((' | head -1`;
-			die $commit unless $commit =~ /\(\(\(\(\((.+?)\)\)\)\)\)/;
+				`git show $tags[$i] --pretty='tformat:(((((%ct)))))' | grep '(((((' | head -1`;
+			die $commit unless $commit =~ /\(\(\(\(\((\d+?)\)\)\)\)\)/;
 
-			$tags[$i] = {
-				'time' => $1,
-				'tag'  => $tags[$i],
-			};
+            push(@releases, Software::Release->new(
+                date => DateTime->from_epoch(epoch => $1),
+                version => $tags[$i]
+            ));
 		}
 
 		@tags = sort { $a->{'time'} cmp $b->{'time'} } @tags;
 	}
 
-	{
-		# add a fake tag for the current release because it doesn't exist yet ( not released yet! )
-		my $newtag;
-		my $ver = $self->zilla->version;
-		if ( defined $tags[-1] ) {
-			# Figure out the previous tag and do some mangling on it to get the "next" one
-			# this requires the user to set a tag_regexp that has a capture!
-			my $prev = $tags[-1]->{'tag'};
-			my $tag_pattern = $self->tag_regexp();
-			if ( $prev =~ m/$tag_pattern/ ) {
-				if ( defined $1 ) {
-					$newtag = $prev;
-					$newtag =~ s/$1/$ver/;
-				} else {
-					$self->zilla->log_debug( "Unable to use 'tag_regexp' as it doesn't define a capture!" );
-				}
-			} else {
-				$self->zilla->log_debug( "Unable to use 'tag_regexp' as it didn't match the previous tag! ($prev)" );
-			}
-		} else {
-			# nothing we can do, generate a fake one...
-		}
+	push @releases, Software::Release->new(date => DateTime::Infinite::Future->new, version => 'HEAD');
 
-		$newtag = 'v' . $ver if ! defined $newtag;
-		push @tags, {'time' => strftime( "%F %T %z", gmtime($^T) ), 'tag' => $newtag, 'faked' => 1};
-	}
-
-	my $changelog = "";
+    @releases = sort { DateTime->compare($a->date, $b->date) } @releases;
 
 	{
-		my $i = @tags;
+		my $i = scalar(@releases);
 		while ($i--) {
-			last if $tags[$i]{time} lt $earliest_date;
+		    if (defined $releases[$i]->date) {
+                last if DateTime->compare($releases[$i]->date, $earliest_date) == -1;
+            }
 
-			my @commit;
+            my $release = $releases[$i];
 
-			my $old_tag = exists $tags[$i-1]{faked} ? 'HEAD' : $tags[$i-1]{tag};
-			my $new_tag = exists $tags[$i]{faked} ? 'HEAD' : $tags[$i]{tag};
-			open my $commit, "-|", "git log $old_tag..$new_tag ."
-				or die $!;
-			local $/ = "\n\n";
-			while (<$commit>) {
-				if (/^\S/) {
-					s/^/  /mg;
-					push @commit, $_;
-					next;
-				}
-
-				# Trim off identical leading whitespace.
-				my ($whitespace) = /^(\s*)/;
-				if (length $whitespace) {
-					s/^$whitespace//mg;
-				}
-
-				# Re-flow the paragraph if it isn't indented from the norm.
-				# This should preserve indented quoted text, wiki-style.
-				unless (/^\s/) {
-					push @commit, fill("    ", "    ", $_), "\n\n";
-				}
-				else {
-					push @commit, $_;
-				}
-			}
-
-			# Don't display the tag if there's nothing under it.
-			next unless @commit;
-
-			my $tag_line = "$tags[$i]{time} $tags[$i]{tag}";
-			$changelog .= (
-				("=" x length($tag_line)) . "\n" .
-				"$tag_line\n" .
-				("=" x length($tag_line)) . "\n\n"
-			);
-
-			$changelog .= $_ foreach @commit;
+            my $iter = Git::Repository::Log::Iterator->new($releases[$i-1]->version.'..'.$release->version);
+            while(my $log = $iter->next) {
+                $release->add_to_changes(Software::Release::Change->new(
+                    author_email => $log->author_email,
+                    author_name => $log->author_name,
+                    change_id => $log->commit,
+                    committer_email => $log->committer_email,
+                    committer_name => $log->committer_name,
+                    date => DateTime->from_epoch(epoch => $log->committer_localtime),
+                    description => $log->message
+                ));
+            };
 		}
 	}
 
-	my $epilogue = "End of changes in the last " . $self->max_age() . " day";
-	$epilogue .= "s" unless $self->max_age() == 1;
+    Class::MOP::load_class('Dist::Zilla::Plugin::ChangelogFromGit::Formatter');
+    my $formatter = Dist::Zilla::Plugin::ChangelogFromGit::Formatter->new;
 
-	$changelog .= (
-		("=" x length($epilogue)) . "\n" .
-		"$epilogue\n" .
-		("=" x length($epilogue)) . "\n"
-	);
+    my $changelog = $formatter->format(\@releases);
 
-	my $file = Dist::Zilla::File::InMemory->new({
-		content => $changelog,
-		name    => $self->file_name(),
-	});
+    my $file = Dist::Zilla::File::InMemory->new({
+      content => $changelog,
+      name    => $self->file_name(),
+    });
 
-	$self->add_file($file);
-	return;
+    $self->add_file($file);
 }
 
 __PACKAGE__->meta->make_immutable;
