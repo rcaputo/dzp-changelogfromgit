@@ -43,8 +43,16 @@ has wrap_column => (
 	default => 74,
 );
 
+has debug => (
+	is      => 'ro',
+	isa     => 'Int',
+	default => 0,
+);
+
 sub gather_files {
 	my ($self, $arg) = @_;
+
+	# Find all release tags back to the earliest changelog date.
 
 	my $earliest_date = DateTime->now->subtract(days => $self->max_age);
 
@@ -61,12 +69,11 @@ sub gather_files {
 				next;
 			}
 
-			my $commit =
-				`git show $tags[$i] --pretty='tformat:(((((%ct)))))' | grep '(((((' | head -1`;
+			my $commit = `git show $tags[$i] --pretty='tformat:(((((%ct)))))' | grep '(((((' | head -1`;
 			die $commit unless $commit =~ /\(\(\(\(\((\d+?)\)\)\)\)\)/;
 
             push(@releases, Software::Release->new(
-                date => DateTime->from_epoch(epoch => $1),
+                date    => DateTime->from_epoch(epoch => $1),
                 version => $tags[$i]
             ));
 		}
@@ -74,30 +81,58 @@ sub gather_files {
 		@tags = sort { $a->{'time'} cmp $b->{'time'} } @tags;
 	}
 
-	push @releases, Software::Release->new(date => DateTime::Infinite::Future->new, version => 'HEAD');
+	# Add a virtual release for the most recent change in the
+	# repository.  This lets us include changes after the last
+	# releases, up to "HEAD".
+
+	{
+		chomp( my $head_version = `git rev-list HEAD | tail -1` );
+		chomp( my $head_time    = `git show --format=%ct -n1 HEAD | head -1` );
+
+		if ($head_version ne $releases[-1]->version()) {
+			push @releases, (
+				Software::Release->new(
+					date    => DateTime->now(),
+					version => 'HEAD',
+				)
+			);
+		}
+	}
 
     @releases = sort { DateTime->compare($a->date, $b->date) } @releases;
 
 	{
 		my $i = scalar(@releases);
 		while ($i--) {
-		    if (defined $releases[$i]->date) {
-                last if DateTime->compare($releases[$i]->date, $earliest_date) == -1;
-            }
+			my $this_release = $releases[$i];
+			last if DateTime->compare($this_release->date, $earliest_date) == -1;
 
-            my $release = $releases[$i];
+			my $prev_version = (
+				$i
+				? ($releases[$i-1]->version() . '..')
+				: ''
+			);
 
-            my $iter = Git::Repository::Log::Iterator->new($releases[$i-1]->version.'..'.$release->version);
-            while(my $log = $iter->next) {
-                $release->add_to_changes(Software::Release::Change->new(
-                    author_email => $log->author_email,
-                    author_name => $log->author_name,
-                    change_id => $log->commit,
-                    committer_email => $log->committer_email,
-                    committer_name => $log->committer_name,
-                    date => DateTime->from_epoch(epoch => $log->committer_localtime),
-                    description => $log->message
-                ));
+			my $release_range = $prev_version . $this_release->version();
+
+			warn ">>> $release_range\n" if $self->debug();
+
+            my $iter = Git::Repository::Log::Iterator->new($release_range);
+            while (my $log = $iter->next) {
+
+				warn "    ", $log->commit(), " ", $log->committer_localtime, "\n" if $self->debug();
+
+	            $this_release->add_to_changes(
+		            Software::Release::Change->new(
+			            author_email    => $log->author_email,
+			            author_name     => $log->author_name,
+			            change_id       => $log->commit,
+			            committer_email => $log->committer_email,
+			            committer_name  => $log->committer_name,
+			            date            => DateTime->from_epoch(epoch => $log->committer_localtime),
+			            description     => $log->message
+		            )
+	            );
             };
 		}
 	}
@@ -106,8 +141,13 @@ sub gather_files {
     if($formclass !~ /^\+/) {
         $formclass = "Dist::Zilla::Plugin::ChangelogFromGit::$formclass";
     }
+
     Class::MOP::load_class($formclass);
-    my $formatter = $formclass->new();
+
+    my $formatter = $formclass->new(
+		max_age => $self->max_age(),
+		wrap_column => $self->wrap_column(),
+	);
 
     my $changelog = $formatter->format(\@releases);
 
@@ -219,13 +259,16 @@ from CVS and Subversion commits.  If anyone is interested, plugins for
 these other version control systems should be about an hour's work
 apiece.
 
-=head1 AUTHOR
+=head1 AUTHORS
 
-Rocco Caputo <rcaputo@cpan.org>
+Rocco Caputo <rcaputo@cpan.org> - Initial release, and ongoing
+management and maintenance.
+
+Cory G. Watson <gphat@cpan.org> - Created the formatting classes.
 
 =head1 COPYRIGHT AND LICENSE
 
-This software is copyright (c) 2010 by Rocco Caputo.
+This software is copyright (c) 2010-2011 by Rocco Caputo.
 
 This is free software; you may redistribute it and/or modify it under
 the same terms as the Perl 5 programming language itself.

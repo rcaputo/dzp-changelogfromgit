@@ -15,7 +15,7 @@ sub format {
 	
 	my $changelog = '';
 	
-	foreach my $release (@{ $releases }) {
+	foreach my $release (reverse @{ $releases }) {
 
         # Don't output empty versions.
         next if $release->has_no_changes;
