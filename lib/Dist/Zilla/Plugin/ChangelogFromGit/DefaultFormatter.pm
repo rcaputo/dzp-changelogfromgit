@@ -1,4 +1,11 @@
 package Dist::Zilla::Plugin::ChangelogFromGit::DefaultFormatter;
+
+# Indent style:
+#   http://www.emacswiki.org/emacs/SmartTabs
+#   http://www.vim.org/scripts/script.php?script_id=231
+#
+# vim: noexpandtab
+
 use Moose;
 
 # ABSTRACT: Default formatter
@@ -8,47 +15,46 @@ with 'Dist::Zilla::Plugin::ChangelogFromGit::Formatter';
 use Text::Wrap qw(wrap fill $columns $huge);
 
 sub format {
-    my ($self, $releases) = @_;
+	my ($self, $releases) = @_;
 
 	$Text::Wrap::huge    = 'wrap';
 	$Text::Wrap::columns = $self->wrap_column;
-	
+
 	my $changelog = '';
-	
+
 	foreach my $release (reverse @{ $releases }) {
 
-        # Don't output empty versions.
-        next if $release->has_no_changes;
+		# Don't output empty versions.
+		next if $release->has_no_changes;
 
-        my $tag_line = $release->date.' '.$release->version;
-        $changelog .= (
-            ("=" x length($tag_line)) . "\n" .
-            "$tag_line\n" .
-            ("=" x length($tag_line)) . "\n\n"
-        );
+		my $tag_line = $release->date.' '.$release->version;
+		$changelog .= (
+			("=" x length($tag_line)) . "\n" .
+			"$tag_line\n" .
+			("=" x length($tag_line)) . "\n\n"
+		);
 
 
-	    foreach my $change (@{ $release->changes }) {
-	        
-	        $changelog .= fill("    ", "    ", 'commit '.$change->change_id)."\n";
-	        $changelog .= fill("    ", "    ", 'Author: '.$change->author_name.' <'.$change->author_email.'>')."\n";
-	        $changelog .= fill("    ", "    ", 'Date: '.$change->date)."\n\n";
-	        unless ($change->description =~ /^\s/) {
-                $changelog .= fill("    ", "    ", $change->description)."\n\n";
-            }
-	    }
+		foreach my $change (@{ $release->changes }) {
+			$changelog .= fill("    ", "    ", 'commit '.$change->change_id)."\n";
+			$changelog .= fill("    ", "    ", 'Author: '.$change->author_name.' <'.$change->author_email.'>')."\n";
+			$changelog .= fill("    ", "    ", 'Date: '.$change->date)."\n\n";
+			unless ($change->description =~ /^\s/) {
+				$changelog .= fill("    ", "    ", $change->description)."\n\n";
+			}
+		}
 	}
-	
+
 	my $max_age = $self->max_age;
-    my $epilogue = "End of changes in the last " . $max_age . " day";
-    $epilogue .= "s" unless $max_age == 1;
-    
-    $changelog .= (
-      ("=" x length($epilogue)) . "\n" .
-      "$epilogue\n" .
-      ("=" x length($epilogue)) . "\n"
-    );
-	
+	my $epilogue = "End of changes in the last " . $max_age . " day";
+	$epilogue .= "s" unless $max_age == 1;
+
+	$changelog .= (
+		("=" x length($epilogue)) . "\n" .
+		"$epilogue\n" .
+		("=" x length($epilogue)) . "\n"
+	);
+
 	return $changelog;
 }
 
@@ -75,7 +81,7 @@ In your dist.ini:
 The example values are the defaults.  This class is the default formatter,
 but may be explicitly set with:
 
-    formatter_class = Default
+	formatter_class = Default
 
 =head1 DESCRIPTION
 

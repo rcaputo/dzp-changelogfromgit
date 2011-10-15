@@ -1,4 +1,11 @@
 package Dist::Zilla::Plugin::ChangelogFromGit::Formatter;
+
+# Indent style:
+#   http://www.emacswiki.org/emacs/SmartTabs
+#   http://www.vim.org/scripts/script.php?script_id=231
+#
+# vim: noexpandtab
+
 use Moose::Role;
 
 # ABSTRACT: Formatting role
@@ -30,46 +37,46 @@ Dist::Zilla::Plugin::ChangelogFromGit::Formatter - Role for formatters
 
 In your implementation:
 
-    package My::Formatter;
-    use Moose;
+	package My::Formatter;
+	use Moose;
 
-    with 'Dist::Zilla::Plugin::ChangelogFromGit::Formatter';
+	with 'Dist::Zilla::Plugin::ChangelogFromGit::Formatter';
 
-    sub format {
-        my ($self, $releases) = @_;
+	sub format {
+		my ($self, $releases) = @_;
 
-    	my $changelog = '';
+		my $changelog = '';
 
-    	foreach my $release (@{ $releases }) {
+		foreach my $release (@{ $releases }) {
 
-            # Don't output empty versions.
-            next if $release->has_no_changes;
+			# Don't output empty versions.
+			next if $release->has_no_changes;
 
-            # Append something to $changelog from $release
+			# Append something to $changelog from $release
 
-    	    foreach my $change (@{ $release->changes }) {
-	            # Append something to $changelog from $change
-    	    }
-    	}
+			foreach my $change (@{ $release->changes }) {
+				# Append something to $changelog from $change
+			}
+		}
 
-        # This string will be output as your Changelog.
-    	return $changelog;
-    }
+		# This string will be output as your Changelog.
+		return $changelog;
+	}
 
-    __PACKAGE__->meta->make_immutable;
-    no Moose;
-    1;
+	__PACKAGE__->meta->make_immutable;
+	no Moose;
+	1;
 
 Then in your dist.ini:
 
-    [ChangelogFromGit]
-    ... other stuff
-    formatter_class = +My::Formatter
+	[ChangelogFromGit]
+	... other stuff
+	formatter_class = +My::Formatter
 
 Mind the +!  Note that if you name your formatter
 Dist::Zilla::Plugin::ChangelogFromGit::Whatever then you can just put
 
-    formatter_class = Formatter
+	formatter_class = Formatter
 
 =head1 DESCRIPTION
 

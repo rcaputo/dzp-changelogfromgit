@@ -1,5 +1,11 @@
 package Dist::Zilla::Plugin::ChangelogFromGit;
 
+# Indent style:
+#   http://www.emacswiki.org/emacs/SmartTabs
+#   http://www.vim.org/scripts/script.php?script_id=231
+#
+# vim: noexpandtab
+
 # ABSTRACT: Build a Changes file from a project's git log.
 
 use Moose;
@@ -14,9 +20,9 @@ use Git::Repository::Log::Iterator;
 use POSIX qw(strftime);
 
 has formatter_class => (
-    is => 'ro',
-    isa => 'Str',
-    default => 'DefaultFormatter'
+	is => 'ro',
+	isa => 'Str',
+	default => 'DefaultFormatter'
 );
 
 has max_age => (
@@ -58,7 +64,7 @@ sub gather_files {
 
 	chomp(my @tags = `git tag`);
 
-    my @releases = ();
+	my @releases = ();
 	{
 		my $tag_pattern = $self->tag_regexp();
 
@@ -72,10 +78,10 @@ sub gather_files {
 			my $commit = `git show $tags[$i] --pretty='tformat:(((((%ct)))))' | grep '(((((' | head -1`;
 			die $commit unless $commit =~ /\(\(\(\(\((\d+?)\)\)\)\)\)/;
 
-            push(@releases, Software::Release->new(
-                date    => DateTime->from_epoch(epoch => $1),
-                version => $tags[$i]
-            ));
+			push(@releases, Software::Release->new(
+				date    => DateTime->from_epoch(epoch => $1),
+				version => $tags[$i]
+			));
 		}
 
 		@tags = sort { $a->{'time'} cmp $b->{'time'} } @tags;
@@ -99,7 +105,7 @@ sub gather_files {
 		}
 	}
 
-    @releases = sort { DateTime->compare($a->date, $b->date) } @releases;
+	@releases = sort { DateTime->compare($a->date, $b->date) } @releases;
 
 	{
 		my $i = scalar(@releases);
@@ -117,46 +123,48 @@ sub gather_files {
 
 			warn ">>> $release_range\n" if $self->debug();
 
-            my $iter = Git::Repository::Log::Iterator->new($release_range);
-            while (my $log = $iter->next) {
+			my $iter = Git::Repository::Log::Iterator->new($release_range);
+			while (my $log = $iter->next) {
 
 				warn "    ", $log->commit(), " ", $log->committer_localtime, "\n" if $self->debug();
 
-	            $this_release->add_to_changes(
-		            Software::Release::Change->new(
-			            author_email    => $log->author_email,
-			            author_name     => $log->author_name,
-			            change_id       => $log->commit,
-			            committer_email => $log->committer_email,
-			            committer_name  => $log->committer_name,
-			            date            => DateTime->from_epoch(epoch => $log->committer_localtime),
-			            description     => $log->message
-		            )
-	            );
-            };
+				$this_release->add_to_changes(
+					Software::Release::Change->new(
+						author_email    => $log->author_email,
+						author_name     => $log->author_name,
+						change_id       => $log->commit,
+						committer_email => $log->committer_email,
+						committer_name  => $log->committer_name,
+						date            => DateTime->from_epoch(epoch => $log->committer_localtime),
+						description     => $log->message
+					)
+				);
+			};
 		}
 	}
 
-    my $formclass = $self->formatter_class;
-    if($formclass !~ /^\+/) {
-        $formclass = "Dist::Zilla::Plugin::ChangelogFromGit::$formclass";
-    }
+	my $formclass = $self->formatter_class;
+	if($formclass !~ /^\+/) {
+		$formclass = "Dist::Zilla::Plugin::ChangelogFromGit::$formclass";
+	}
 
-    Class::MOP::load_class($formclass);
+	Class::MOP::load_class($formclass);
 
-    my $formatter = $formclass->new(
+	my $formatter = $formclass->new(
 		max_age => $self->max_age(),
 		wrap_column => $self->wrap_column(),
 	);
 
-    my $changelog = $formatter->format(\@releases);
+	my $changelog = $formatter->format(\@releases);
 
-    my $file = Dist::Zilla::File::InMemory->new({
-      content => $changelog,
-      name    => $self->file_name(),
-    });
+	my $file = Dist::Zilla::File::InMemory->new(
+		{
+			content => $changelog,
+			name    => $self->file_name(),
+		}
+	);
 
-    $self->add_file($file);
+	$self->add_file($file);
 }
 
 __PACKAGE__->meta->make_immutable;
