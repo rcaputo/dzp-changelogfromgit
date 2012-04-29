@@ -59,6 +59,7 @@ has releases => (
 		get_release   => 'get',
 		all_releases  => 'elements',
 	},
+	default => sub { [] },
 );
 
 has skipped_release_count => (
@@ -120,7 +121,7 @@ sub gather_files {
 		chomp( my $head_version = `git rev-list HEAD | tail -1` );
 		chomp( my $head_time    = `git show --format=%ct -n1 HEAD | head -1` );
 
-		if ($head_version ne $self->get_release(-1)->version()) {
+		if ( not $self->all_releases or $head_version ne $self->get_release(-1)->version()) {
 			$self->push_release(
 				Software::Release->new(
 					date    => DateTime->now(),
