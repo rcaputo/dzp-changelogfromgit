@@ -389,7 +389,7 @@ their default values.
 
 	[ChangelogFromGit]
 	max_age     = 365
-	tag_regexp  = ^v\d+_\d+$
+	tag_regexp  = ^v(\d+\.\d+)$
 	file_name   = CHANGES
 	wrap_column = 74
 	debug       = 0
