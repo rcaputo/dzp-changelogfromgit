@@ -82,6 +82,16 @@ has earliest_date => (
 	},
 );
 
+has filter_in => (
+    is      => 'ro',
+	isa     => 'Str',
+);
+
+has filter_out => (
+    is      => 'ro',
+	isa     => 'Str',
+);
+
 sub gather_files {
 	my ($self, $arg) = @_;
 
@@ -159,6 +169,15 @@ sub gather_files {
 
 			my $iter = Git::Repository::Log::Iterator->new($release_range);
 			while (my $log = $iter->next) {
+				if($self->filter_out)	{
+					my $out_re = $self->filter_out();
+					next if $log->message =~ /$out_re/; 
+				}
+				if($self->filter_in){
+					my $in_re = $self->filter_in();
+					next unless $log->message =~ /$in_re/; 
+				}
+				#print STDERR "LOG: ".$log->message."\n";
 
 				warn("    ", $log->commit(), " ", $log->committer_localtime, "\n") if (
 					$self->debug()
@@ -472,6 +491,27 @@ runtime tracing on STDERR.
 
 	[ChangelogFromGit]
 	debug = 1
+
+=head2 filter_out = REGULAR_EXPRESSION
+
+C<filter_out> sets a regular expression which discards matching commit 
+messages. This provides a way to exclude commit messages such as
+'forgot to include file X' or 'typo'.
+
+	[ChangelogFromGit]
+	filter_out = ^forgot
+
+=head2 filter_in = REGULAR_EXPRESSION
+
+C<filter_in> does the opposite of C<filter_out>: it sets a regular
+expression which commit messages must match in order to be included
+in the Changes file. This means that when making a commit whith a 
+relevant message, you can include the regular expression pattern to
+have it included in the Changes file, and ignore all the irrelevant
+commit messages.
+
+	[ChangelogFromGit]
+	filter_in = ^Major
 
 =head1 HOW IT WORKS
 
