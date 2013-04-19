@@ -179,7 +179,7 @@ sub gather_files {
 
 				next if (
 					defined $include_message_re and
-					$log->message() =~ /$include_message_re/o
+					$log->message() !~ /$include_message_re/o
 				);
 
 				#print STDERR "LOG: ".$log->message."\n";
