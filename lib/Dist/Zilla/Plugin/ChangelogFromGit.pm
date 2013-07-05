@@ -17,6 +17,7 @@ use DateTime::Infinite;
 use Software::Release;
 use Software::Release::Change;
 use Git::Repository::Log::Iterator;
+use IPC::Cmd qw/run/;
 
 has max_age => (
 	is      => 'ro',
@@ -99,7 +100,8 @@ sub gather_files {
 
 	my $earliest_date = $self->earliest_date();
 
-	chomp(my @tags = `git tag`);
+	my @tags = $self->rungit([qw/git tag/]);
+	my @head_version_per_tag = ();
 
 	{
 		my $tag_pattern = $self->tag_regexp();
@@ -111,8 +113,14 @@ sub gather_files {
 				next;
 			}
 
-			my $commit = `git show $tags[$i] --pretty='tformat:(((((%ct)))))' | grep '(((((' | head -1`;
-			die $commit unless $commit =~ /\(\(\(\(\((\d+?)\)\)\)\)\)/;
+			my $commit = '';
+			foreach ($self->rungit(['git', 'show', "refs/tags/$tags[$i]", "--pretty='tformat:(((((%ct)))))"])) {
+				next if (! /\(\(\(\(\(/);
+				$commit = $_;
+				last;
+			}
+			die "Failed to find our pretty print format ((((( for tag $tags[$i]: $commit" unless $commit =~ /\(\(\(\(\((\d+?)\)\)\)\)\)/;
+			push(@head_version_per_tag, ($self->rungit(['git', 'rev-list', "refs/tags/$tags[$i]"]))[0]);
 
 			$self->push_release(
 				Software::Release->new(
@@ -128,10 +136,9 @@ sub gather_files {
 	# releases, up to "HEAD".
 
 	{
-		chomp( my $head_version = `git rev-list HEAD | tail -1` );
-		chomp( my $head_time    = `git show --format=%ct -n1 HEAD | head -1` );
+		my $head_version = ($self->rungit([qw/git rev-list HEAD/]))[0];
 
-		if ( not $self->all_releases or $head_version ne $self->get_release(-1)->version()) {
+		if ( not $self->all_releases or ! grep {$head_version eq $_} @head_version_per_tag) {
 			$self->push_release(
 				Software::Release->new(
 					date    => DateTime->now(),
@@ -396,6 +403,12 @@ sub format_datetime {
 	return $datetime->strftime("%F %T %z");
 }
 
+sub rungit {
+	my ($self, $arrayp) = @_;
+	my $buf;
+	run(command => $arrayp, buffer => \$buf);
+	return split("\n", $buf);
+}
 __PACKAGE__->meta->make_immutable;
 no Moose;
 1;
