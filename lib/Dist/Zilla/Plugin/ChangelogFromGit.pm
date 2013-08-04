@@ -938,7 +938,7 @@ overridable.
 
 =head1 COPYRIGHT AND LICENSE
 
-This software is copyright (c) 2010-2011 by Rocco Caputo.
+This software is copyright (c) 2010-2013 by Rocco Caputo.
 
 This is free software; you may redistribute it and/or modify it under
 the same terms as the Perl 5 programming language itself.
