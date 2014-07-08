@@ -17,6 +17,7 @@ use DateTime::Infinite;
 use Software::Release;
 use Software::Release::Change;
 use Git::Repository::Log::Iterator;
+use Dist::Zilla::File::InMemory;
 use IPC::Cmd qw/run/;
 
 has max_age => (
