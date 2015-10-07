@@ -26,6 +26,18 @@ has max_age => (
 	default => 365,
 );
 
+has min_releases => (
+	is      => 'ro',
+	isa     => 'Int',
+	default => 1,
+);
+
+has max_releases => (
+	is      => 'ro',
+	isa     => 'Int',
+	default => 0,
+);
+
 has tag_regexp => (
 	is      => 'ro',
 	isa     => 'Str',
@@ -75,7 +87,7 @@ has skipped_release_count => (
 );
 
 has earliest_date => (
-	is      => 'ro',
+	is      => 'rw',
 	isa     => 'DateTime',
 	lazy    => 1,
 	default => sub {
@@ -157,12 +169,18 @@ sub gather_files {
 
 	{
 		my $i = $self->release_count();
+		my $included_releases = 0;
+		my $min_releases = $self->min_releases;
+		my $max_releases = $self->max_releases;
 		while ($i--) {
 			my $this_release = $self->get_release($i);
 
-			if (DateTime->compare($this_release->date, $earliest_date) == -1) {
-				$self->add_skipped_release(1);
-				next;
+			if ($min_releases <= $included_releases){
+				if ((DateTime->compare($this_release->date, $earliest_date) == -1) ||
+					($max_releases && ($max_releases <= $included_releases))){
+					$self->add_skipped_release(1);
+					next;
+				}
 			}
 
 			my $prev_version = (
@@ -179,6 +197,7 @@ sub gather_files {
 			my $include_message_re = $self->include_message();
 
 			my $iter = Git::Repository::Log::Iterator->new($release_range);
+			my $commit_date;
 			while (my $log = $iter->next) {
 				next if (
 					defined $exclude_message_re and
@@ -196,6 +215,7 @@ sub gather_files {
 					$self->debug()
 				);
 
+				$commit_date = DateTime->from_epoch(epoch => $log->committer_localtime);
 				$this_release->add_to_changes(
 					Software::Release::Change->new(
 						author_email    => $log->author_email,
@@ -203,11 +223,14 @@ sub gather_files {
 						change_id       => $log->commit,
 						committer_email => $log->committer_email,
 						committer_name  => $log->committer_name,
-						date            => DateTime->from_epoch(epoch => $log->committer_localtime),
+						date            => $commit_date,
 						description     => $log->message
 					)
 				);
 			};
+			if(++$included_releases == $max_releases){
+				$self->earliest_date($commit_date || $this_release->date);
+			}
 		}
 	}
 
@@ -467,6 +490,24 @@ default value:
 C<max_age> is intended to limit the size of change logs for large,
 long-term projects that don't want to include the entire, huge commit
 history in every release.
+
+=head2 min_releases = INTEGER
+
+C<min_releases> sets the minimum number of releases that should be
+included.  It defaults to 1 so that at least the current release is
+added, regardless of C<max_age>.
+
+	[ChangelogFromGit]
+	min_releases = 5
+
+=head2 max_releases = INTEGER
+
+c<max_releases> allows you limit the number of releases included.
+C<max_age> will still be the limiting factor if it contains fewer
+releases than the max specified.
+
+	[ChangelogFromGit]
+	max_releases = 15
 
 =head2 tag_regexp = REGULAR_EXPRESSION
 
