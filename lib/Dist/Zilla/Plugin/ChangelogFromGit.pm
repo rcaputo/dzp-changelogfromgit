@@ -94,6 +94,17 @@ has exclude_message => (
     isa => 'Str',
 );
 
+=head2 gather_files()
+
+<B FOR INTERNAL USE ONLY>
+
+Find all release tags back to the earliest changelog date.
+
+Add a virtual release for the most recent change in the repository. This lets us
+include changes after the last releases, up to "HEAD".
+
+=cut
+
 sub gather_files {
 	my ($self, $arg) = @_;
 
@@ -403,6 +414,12 @@ sub format_datetime {
 	my ($self, $datetime) = @_;
 	return $datetime->strftime("%F %T %z");
 }
+
+=head2 rungit()
+
+<B FOR INTERNAL USE ONLY>
+
+=cut
 
 sub rungit {
 	my ($self, $arrayp) = @_;
