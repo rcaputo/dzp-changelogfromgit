@@ -106,17 +106,6 @@ has exclude_message => (
     isa => 'Str',
 );
 
-=head2 gather_files()
-
-<B FOR INTERNAL USE ONLY>
-
-Find all release tags back to the earliest changelog date.
-
-Add a virtual release for the most recent change in the repository. This lets us
-include changes after the last releases, up to "HEAD".
-
-=cut
-
 sub gather_files {
 	my ($self, $arg) = @_;
 
@@ -437,12 +426,6 @@ sub format_datetime {
 	my ($self, $datetime) = @_;
 	return $datetime->strftime("%F %T %z");
 }
-
-=head2 rungit()
-
-<B FOR INTERNAL USE ONLY>
-
-=cut
 
 sub rungit {
 	my ($self, $arrayp) = @_;
@@ -964,6 +947,22 @@ skipped_release_count() contains the number of releases truncated by
 max_age().  The default render_changelog_footer() uses it to display
 the number of changes that have been omitted from the log.
 
+=head1 INTERNAL METHODS
+
+Dist::Zilla::Plugin::ChangelogFromGit implements a couple of
+"unpublished" methods.  These are not intended for general use.
+
+=head2 gather_files()
+
+Find all release tags back to the earliest changelog date.
+
+Add a virtual release for the most recent change in the repository. This lets us
+include changes after the last releases, up to "HEAD".
+
+=head2 rungit()
+
+A wrapper to run git commands.
+
 =head1 Subversion and CVS
 
 This plugin is almost entirely a copy-and-paste port of a command-line
@@ -997,7 +996,7 @@ overridable.
 
 =head1 COPYRIGHT AND LICENSE
 
-This software is copyright (c) 2010-2013 by Rocco Caputo.
+This software is copyright (c) 2010-2018 by Rocco Caputo.
 
 This is free software; you may redistribute it and/or modify it under
 the same terms as the Perl 5 programming language itself.
