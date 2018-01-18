@@ -429,7 +429,7 @@ sub format_datetime {
 
 sub rungit {
 	my ($self, $arrayp) = @_;
-	my $buf;
+	my $buf = '';
 	run(command => $arrayp, buffer => \$buf);
 	return split("\n", $buf);
 }
