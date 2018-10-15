@@ -274,7 +274,7 @@ sub render_changelog_footer {
 	if ($skipped_count) {
 		my $releases = "release" . ($skipped_count == 1 ? "" : "s");
 		$changelog_footer = (
-			"Plus $skipped_count $releases after " .
+			"Plus $skipped_count $releases before " .
 			$self->format_datetime($self->earliest_date()) . '.'
 		);
 	}
